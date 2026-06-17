@@ -179,7 +179,7 @@ install_base() {
         need_install_yum wget curl unzip tar cronie socat ca-certificates pv
         update-ca-trust force-enable >/dev/null 2>&1 || true
     elif [[ x"${release}" == x"alpine" ]]; then
-        need_install_apk wget curl unzip tar socat ca-certificates pv
+        need_install_apk wget curl unzip tar socat ca-certificates pv logrotate
         update-ca-certificates >/dev/null 2>&1 || true
     elif [[ x"${release}" == x"debian" ]]; then
         need_install_apt wget curl unzip tar cron socat ca-certificates pv
@@ -317,9 +317,38 @@ error_log="/var/log/v2node.log"
 depend() {
         need net
 }
+
+start_pre() {
+        # 每次启动清空日志，保证只保留当前会话(本次运行)的日志
+        : > /var/log/v2node.log
+}
 EOF
         chmod +x /etc/init.d/v2node
         rc-update add v2node default
+
+        # 日志轮转：单文件超过 10M 即轮转，仅保留 1 个压缩备份，避免日志无限增长
+        cat <<'LOGROTATE_EOF' > /etc/logrotate.d/v2node
+/var/log/v2node.log {
+    su root root
+    size 10M
+    rotate 1
+    copytruncate
+    compress
+    missingok
+    notifempty
+}
+LOGROTATE_EOF
+        # busybox crond 每 15 分钟检查一次，及时把超过 10M 的日志轮转掉
+        mkdir -p /etc/periodic/15min
+        cat <<'PERIODIC_EOF' > /etc/periodic/15min/v2node-logrotate
+#!/bin/sh
+command -v logrotate >/dev/null 2>&1 || exit 0
+logrotate /etc/logrotate.d/v2node 2>/dev/null
+PERIODIC_EOF
+        chmod +x /etc/periodic/15min/v2node-logrotate
+        rc-update add crond default >/dev/null 2>&1
+        rc-service crond start >/dev/null 2>&1
+
         echo -e "${green}v2node ${last_version}${plain} 安装完成，已设置开机自启"
     else
         rm /etc/systemd/system/v2node.service -f
@@ -379,7 +408,7 @@ EOF
     fi
 
 
-    curl -o /usr/bin/v2node -Ls https://raw.githubusercontent.com/wyx2685/v2node/main/script/v2node.sh
+    curl -o /usr/bin/v2node -Ls https://raw.githubusercontent.com/Null404-0/v2node-gugugaga/main/script/v2node.sh
     chmod +x /usr/bin/v2node
 
     cd $cur_dir
