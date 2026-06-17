@@ -310,6 +310,10 @@ command_user="root"
 pidfile="/run/v2node.pid"
 command_background="yes"
 
+# Alpine/OpenRC 没有 journald，这里把标准输出/错误落盘，方便 v2node log 查看日志
+output_log="/var/log/v2node.log"
+error_log="/var/log/v2node.log"
+
 depend() {
         need net
 }

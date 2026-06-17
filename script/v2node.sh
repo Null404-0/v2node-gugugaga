@@ -297,7 +297,17 @@ disable() {
 
 show_log() {
     if [[ x"${release}" == x"alpine" ]]; then
-        echo -e "${red}alpine系统暂不支持日志查看${plain}\n" && exit 1
+        local log_file="/var/log/v2node.log"
+        if [[ ! -f "${log_file}" ]]; then
+            echo -e "${yellow}日志文件 ${log_file} 不存在。${plain}"
+            echo -e "${yellow}如果你是从旧版本升级而来，请先执行 ${green}v2node update${plain}${yellow} 重新生成启动脚本以启用日志落盘，再重启服务。${plain}\n"
+            if [[ $# == 0 ]]; then
+                before_show_menu
+            fi
+            return
+        fi
+        echo -e "${green}正在实时查看 v2node 日志(按 Ctrl+C 退出)...${plain}\n"
+        tail -n 200 -f "${log_file}"
     else
         journalctl -u v2node.service -e --no-pager -f
     fi
