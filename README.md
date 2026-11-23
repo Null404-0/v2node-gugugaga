@@ -21,6 +21,10 @@ GOEXPERIMENT=jsonv2 go build -v -o build_assets/v2node -trimpath -ldflags "-X 'g
 
 ## 更新日志
 
+### 2026-11-23
+- 同步上游至 [`5c2360f`](https://github.com/wyx2685/v2node/commit/5c2360f95db39f61271e701eabdee200ba8075ea)，包含 Xray-core v26.10.31、SS2022 密钥长度和 Freedom 出站域名策略修复。
+- Alpine 升级时会重启到新版本。`v2node log` 显示最近 200 行并实时跟踪，每 15 分钟检查一次日志，超过 10 MiB 时轮转并保留一份压缩备份。
+
 ### 2026-06-17
 - Alpine 支持本地日志查看。
 - `v2node log` 支持实时跟踪。

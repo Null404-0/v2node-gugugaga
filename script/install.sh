@@ -248,53 +248,45 @@ EOF
             systemctl restart v2node
         fi
         sleep 2
-        check_status
         echo -e ""
-        if [[ $? == 0 ]]; then
+        if check_status; then
             echo -e "${green}v2node 重启成功${plain}"
         else
             echo -e "${red}v2node 可能启动失败，请使用 v2node log 查看日志信息${plain}"
         fi
 }
 
-install_v2node() {
-    local version_param="$1"
-    if [[ -e /usr/local/v2node/ ]]; then
-        rm -rf /usr/local/v2node/
-    fi
+install_v2node() (
+    local version_param="$1" last_version url staging
+    set -o pipefail
 
-    mkdir /usr/local/v2node/ -p
-    cd /usr/local/v2node/
-
-    if  [[ -z "$version_param" ]] ; then
-        last_version=$(curl -Ls "https://api.github.com/repos/Null404-0/v2node-gugugaga/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$last_version" ]]; then
+    if [[ -z "$version_param" ]]; then
+        last_version=$(curl -fsSL --retry 2 "https://api.github.com/repos/Null404-0/v2node-gugugaga/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        if [[ -z "$last_version" ]]; then
             echo -e "${red}检测 v2node 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 v2node 版本安装${plain}"
             exit 1
         fi
         echo -e "${green}检测到最新版本：${last_version}，开始安装...${plain}"
-        url="https://github.com/Null404-0/v2node-gugugaga/releases/download/${last_version}/v2node-linux-${arch}.zip"
-        curl -sL "$url" | pv -s 30M -W -N "下载进度" > /usr/local/v2node/v2node-linux.zip
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 v2node 失败，请确保你的服务器能够下载 Github 的文件${plain}"
-            exit 1
-        fi
     else
-    last_version=$version_param
-        url="https://github.com/Null404-0/v2node-gugugaga/releases/download/${last_version}/v2node-linux-${arch}.zip"
-        curl -sL "$url" | pv -s 30M -W -N "下载进度" > /usr/local/v2node/v2node-linux.zip
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 v2node $1 失败，请确保此版本存在${plain}"
-            exit 1
-        fi
+        last_version="v${version_param#v}"
     fi
 
-    unzip v2node-linux.zip
-    rm v2node-linux.zip -f
-    chmod +x v2node
-    mkdir /etc/v2node/ -p
-    cp geoip.dat /etc/v2node/
-    cp geosite.dat /etc/v2node/
+    mkdir -p /usr/local/v2node /etc/v2node || exit 1
+    cd /usr/local/v2node || exit 1
+    staging=$(mktemp -d /usr/local/v2node/.install.XXXXXX) || exit 1
+    trap 'rm -rf -- "$staging"' EXIT
+    url="https://github.com/Null404-0/v2node-gugugaga/releases/download/${last_version}/v2node-linux-${arch}.zip"
+    if ! curl -fsSL --retry 2 "$url" | pv -s 30M -W -N "下载进度" > "$staging/release.zip" ||
+       ! unzip -q "$staging/release.zip" -d "$staging/package" ||
+       [[ ! -s "$staging/package/v2node" || ! -s "$staging/package/geoip.dat" || ! -s "$staging/package/geosite.dat" ]]; then
+        echo -e "${red}下载或解压 v2node ${last_version} 失败，请检查版本和网络后重试${plain}"
+        exit 1
+    fi
+    curl -fsSL --retry 2 -o "$staging/v2node.sh" https://raw.githubusercontent.com/Null404-0/v2node-gugugaga/main/script/v2node.sh || exit 1
+    chmod +x "$staging/package/v2node" "$staging/v2node.sh" || exit 1
+    mv -f "$staging/package/"* . || exit 1
+    mv -f "$staging/v2node.sh" /usr/bin/v2node || exit 1
+    cp geoip.dat geosite.dat /etc/v2node/ || exit 1
     if [[ x"${release}" == x"alpine" ]]; then
         rm /etc/init.d/v2node -f
         cat <<EOF > /etc/init.d/v2node
@@ -387,19 +379,20 @@ EOF
             echo -e "${green}已根据参数生成 /etc/v2node/config.json${plain}"
             first_install=false
         else
-            cp config.json /etc/v2node/
+            if [[ -f config.json ]]; then
+                cp config.json /etc/v2node/ || exit 1
+            fi
             first_install=true
         fi
     else
         if [[ x"${release}" == x"alpine" ]]; then
-            service v2node start
+            service v2node restart
         else
             systemctl start v2node
         fi
         sleep 2
-        check_status
         echo -e ""
-        if [[ $? == 0 ]]; then
+        if check_status; then
             echo -e "${green}v2node 重启成功${plain}"
         else
             echo -e "${red}v2node 可能启动失败，请使用 v2node log 查看日志信息${plain}"
@@ -407,11 +400,7 @@ EOF
         first_install=false
     fi
 
-
-    curl -o /usr/bin/v2node -Ls https://raw.githubusercontent.com/Null404-0/v2node-gugugaga/main/script/v2node.sh
-    chmod +x /usr/bin/v2node
-
-    cd $cur_dir
+    cd "$cur_dir" || exit 1
     rm -f install.sh
     echo "------------------------------------------"
     echo -e "管理脚本使用方法: "
@@ -449,7 +438,7 @@ EOF
             echo "${green}已跳过自动生成配置。如需后续生成，可执行: v2node generate${plain}"
         fi
     fi
-}
+)
 
 parse_args "$@"
 echo -e "${green}开始安装${plain}"
